@@ -1,165 +1,21 @@
 const { chromium } = require('playwright');
 
-const START_SELECTORS = [
-  'text="Start My Day"',
-  ':text("Start My Day")',
-  'button:has-text("Start My Day")',
-  'div:has-text("Start My Day")',
-  'span:has-text("Start My Day")',
-  '[aria-label*="Start My Day" i]',
-];
-
-const END_SELECTORS = [
-  'text="End My Day"',
-  ':text("End My Day")',
-  'button:has-text("End My Day")',
-  'div:has-text("End My Day")',
-  'span:has-text("End My Day")',
-  '[aria-label*="End My Day" i]',
-];
-
-const MAX_CLICK_ATTEMPTS = 10;
-const WAIT_AFTER_CLICK_MS = 2500;
-const SUCCESS_SCREENSHOT = 'end-my-day-screenshot.png';
-
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function isVisible(page, selectors) {
-  for (const selector of selectors) {
-    try {
-      const el = page.locator(selector).first();
-      if ((await el.count()) > 0 && (await el.isVisible())) {
-        return true;
-      }
-    } catch {
-      // try next
-    }
-  }
-  return false;
-}
-
-async function clickStartMyDay(page) {
-  for (const selector of START_SELECTORS) {
-    try {
-      const el = page.locator(selector).first();
-      if ((await el.count()) > 0) {
-        await el.scrollIntoViewIfNeeded();
-        await el.waitFor({ state: 'visible', timeout: 5000 });
-        await el.click({ timeout: 5000 });
-        console.log(`Clicked Start My Day circle (selector: ${selector})`);
-        return true;
-      }
-    } catch {
-      // try next
-    }
-  }
-  return false;
-}
-
-async function tryDismissConfirm(page) {
-  const confirmSelectors = [
-    'button:has-text("OK")',
-    'button:has-text("Ok")',
-    'button:has-text("Yes")',
-    'button:has-text("Confirm")',
-    'button:has-text("Continue")',
-  ];
-  for (const selector of confirmSelectors) {
-    try {
-      const el = page.locator(selector).first();
-      if ((await el.count()) > 0 && (await el.isVisible())) {
-        await el.click();
-        console.log(`Confirmed dialog (${selector})`);
-        return true;
-      }
-    } catch {
-      // ignore
-    }
-  }
-  return false;
-}
-
-async function isClockedIn(page) {
-  return isVisible(page, END_SELECTORS);
-}
-
-async function captureEndMyDayScreenshot(page) {
-  await sleep(500);
-  await page.screenshot({ path: SUCCESS_SCREENSHOT, fullPage: true });
-  console.log(`Screenshot saved: ${SUCCESS_SCREENSHOT}`);
-}
-
-async function clickStartUntilEndMyDay(page) {
-  if (await isClockedIn(page)) {
-    const startStillVisible = await isVisible(page, START_SELECTORS);
-    if (!startStillVisible) {
-      console.log('Already clocked in — "End My Day" is showing. Nothing to click.');
-      await captureEndMyDayScreenshot(page);
-      return;
-    }
-  }
-
-  console.log('Will keep clicking "Start My Day" until "End My Day" appears...');
-
-  for (let attempt = 1; attempt <= MAX_CLICK_ATTEMPTS; attempt++) {
-    if (await isClockedIn(page)) {
-      console.log(`✅ "End My Day" is now showing (after ${attempt} attempt(s)).`);
-      await captureEndMyDayScreenshot(page);
-      return;
-    }
-
-    const clicked = await clickStartMyDay(page);
-    if (!clicked) {
-      console.log(`Attempt ${attempt}: Start My Day circle not found or not clickable.`);
-    }
-
-    await sleep(WAIT_AFTER_CLICK_MS);
-    await tryDismissConfirm(page);
-    await sleep(1000);
-
-    if (await isClockedIn(page)) {
-      console.log(`✅ "End My Day" is now showing (after ${attempt} click(s)).`);
-      await captureEndMyDayScreenshot(page);
-      return;
-    }
-
-    console.log(`Attempt ${attempt}/${MAX_CLICK_ATTEMPTS}: still not "End My Day". Clicking again...`);
-  }
-
-  await page.screenshot({ path: 'debug-screenshot.png', fullPage: true });
-  throw new Error(
-    `Clicked "Start My Day" ${MAX_CLICK_ATTEMPTS} times but "End My Day" never appeared. See debug-screenshot.png.`
-  );
 }
 
 async function startMyDay() {
   const username = process.env.MIHCM_USERNAME;
   const password = process.env.MIHCM_PASSWORD;
-  const proxyServer = process.env.MIHCM_PROXY_SERVER;
-  const proxyUsername = process.env.MIHCM_PROXY_USERNAME;
-  const proxyPassword = process.env.MIHCM_PROXY_PASSWORD;
 
   if (!username || !password) {
     throw new Error('Missing MIHCM_USERNAME or MIHCM_PASSWORD environment variables');
   }
 
-  const launchOptions = {
+  const browser = await chromium.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  };
-
-  if (proxyServer) {
-    launchOptions.proxy = { server: proxyServer };
-    if (proxyUsername) launchOptions.proxy.username = proxyUsername;
-    if (proxyPassword) launchOptions.proxy.password = proxyPassword;
-    console.log(`Using proxy server: ${proxyServer}`);
-  } else {
-    console.log('No proxy configured. Using runner public IP.');
-  }
-
-  const browser = await chromium.launch(launchOptions);
+  });
 
   const context = await browser.newContext({
     userAgent:
@@ -170,31 +26,83 @@ async function startMyDay() {
   const page = await context.newPage();
 
   try {
-    console.log('Navigating to Time Capture (will redirect to login)...');
+    // 1. Navigate — redirects to login
+    console.log('Navigating to Time Capture...');
     await page.goto('https://app.myhcm.pk/ontime/timecapture', {
       waitUntil: 'networkidle',
       timeout: 30000,
     });
 
+    // 2. Login
     console.log('Filling credentials...');
     await page.waitForSelector('input[type="text"], input[name="Username"], input[id="Username"]', {
       timeout: 15000,
     });
     await page.fill('input[type="text"], input[name="Username"], input[id="Username"]', username);
     await page.fill('input[type="password"], input[name="Password"], input[id="Password"]', password);
-    console.log('Credentials entered.');
+    await page.click('button[type="submit"], input[type="submit"], button:has-text("SIGN IN"), button:has-text("Sign in")');
+    console.log('Sign in clicked.');
 
-    await page.click(
-      'button[type="submit"], input[type="submit"], button:has-text("SIGN IN"), button:has-text("Sign in")'
-    );
-    console.log('Sign in clicked. Waiting for Time Capture page...');
-
+    // 3. Wait for Time Capture page
     await page.waitForURL('**/ontime/timecapture**', { timeout: 30000 });
     await page.waitForLoadState('networkidle', { timeout: 30000 });
+    await sleep(4000);
     console.log('On Time Capture page.');
 
+    // 4. Take screenshot for reference
+    await page.screenshot({ path: 'debug-screenshot.png', fullPage: true });
+
+    // 5. Click the "Start / My Day" circle button using JS
+    // The button text is split: "Start" on line 1, "My Day" on line 2
+    console.log('Clicking Start My Day button...');
+    const clicked = await page.evaluate(() => {
+      // Find any element whose combined innerText contains both "Start" and "My Day"
+      const all = Array.from(document.querySelectorAll('*'));
+      for (const el of all) {
+        const text = el.innerText || '';
+        const normalized = text.replace(/\s+/g, ' ').trim();
+        if (normalized === 'Start My Day' || normalized.includes('Start\nMy Day') || normalized.includes('Start My Day')) {
+          // Prefer clicking the element itself if it's small (likely the button)
+          if (el.children.length <= 3) {
+            el.click();
+            return { clicked: true, tag: el.tagName, text: normalized };
+          }
+        }
+      }
+      // Fallback: find element containing "Start" text node directly
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.textContent.trim() === 'Start') {
+          const parent = node.parentElement;
+          const grandparent = parent && parent.parentElement;
+          // Check sibling/grandparent contains "My Day"
+          const container = grandparent || parent;
+          if (container && container.innerText && container.innerText.includes('My Day')) {
+            container.click();
+            return { clicked: true, tag: container.tagName, text: container.innerText.trim() };
+          }
+        }
+      }
+      return { clicked: false };
+    });
+
+    console.log('JS click result:', JSON.stringify(clicked));
+
+    if (!clicked.clicked) {
+      throw new Error('Could not find Start My Day button. Check debug-screenshot.png.');
+    }
+
+    // 6. Confirm
     await sleep(3000);
-    await clickStartUntilEndMyDay(page);
+    await page.screenshot({ path: 'after-click-screenshot.png', fullPage: true });
+    const afterText = await page.innerText('body');
+    if (afterText.includes('End') && afterText.includes('My Day')) {
+      console.log('✅ Day started successfully!');
+    } else {
+      console.warn('⚠️  Could not confirm. Check after-click-screenshot.png.');
+    }
+
   } finally {
     await browser.close();
   }

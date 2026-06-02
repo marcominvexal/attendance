@@ -1,4 +1,5 @@
 .env
 node_modules/
 debug-screenshot.png
+after-click-screenshot.png
 end-my-day-screenshot.png
