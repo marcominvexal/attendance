@@ -1,68 +1,57 @@
 const { chromium } = require('playwright');
 
-const ACTIONS = [
-  {
-    label: 'Start My Day',
-    selectors: [
-      'text="Start My Day"',
-      ':text("Start My Day")',
-      'button:has-text("Start My Day")',
-      'div:has-text("Start My Day")',
-      'span:has-text("Start My Day")',
-    ],
-  },
-  {
-    label: 'End My Day',
-    selectors: [
-      'text="End My Day"',
-      ':text("End My Day")',
-      'button:has-text("End My Day")',
-      'div:has-text("End My Day")',
-      'span:has-text("End My Day")',
-    ],
-  },
+const START_SELECTORS = [
+  'text="Start My Day"',
+  ':text("Start My Day")',
+  'button:has-text("Start My Day")',
+  'div:has-text("Start My Day")',
+  'span:has-text("Start My Day")',
+  '[aria-label*="Start My Day" i]',
 ];
 
-const MAX_CLICK_ATTEMPTS = 8;
+const END_SELECTORS = [
+  'text="End My Day"',
+  ':text("End My Day")',
+  'button:has-text("End My Day")',
+  'div:has-text("End My Day")',
+  'span:has-text("End My Day")',
+  '[aria-label*="End My Day" i]',
+];
+
+const MAX_CLICK_ATTEMPTS = 10;
 const WAIT_AFTER_CLICK_MS = 2500;
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function isActionVisible(page, label) {
-  const action = ACTIONS.find((a) => a.label === label);
-  if (!action) return false;
-
-  for (const selector of action.selectors) {
+async function isVisible(page, selectors) {
+  for (const selector of selectors) {
     try {
       const el = page.locator(selector).first();
       if ((await el.count()) > 0 && (await el.isVisible())) {
         return true;
       }
     } catch {
-      // try next selector
+      // try next
     }
   }
   return false;
 }
 
-async function clickAction(page, label) {
-  const action = ACTIONS.find((a) => a.label === label);
-  if (!action) return false;
-
-  for (const selector of action.selectors) {
+async function clickStartMyDay(page) {
+  for (const selector of START_SELECTORS) {
     try {
       const el = page.locator(selector).first();
       if ((await el.count()) > 0) {
         await el.scrollIntoViewIfNeeded();
         await el.waitFor({ state: 'visible', timeout: 5000 });
         await el.click({ timeout: 5000 });
-        console.log(`Clicked "${label}" (selector: ${selector})`);
+        console.log(`Clicked Start My Day circle (selector: ${selector})`);
         return true;
       }
     } catch {
-      // try next selector
+      // try next
     }
   }
   return false;
@@ -91,75 +80,47 @@ async function tryDismissConfirm(page) {
   return false;
 }
 
-function oppositeLabel(label) {
-  return label === 'Start My Day' ? 'End My Day' : 'Start My Day';
+async function isClockedIn(page) {
+  return isVisible(page, END_SELECTORS);
 }
 
-function stateChanged(clickedLabel, startVisible, endVisible) {
-  if (clickedLabel === 'Start My Day') {
-    return endVisible && !startVisible;
-  }
-  return startVisible && !endVisible;
-}
-
-async function pickActionToClick(page) {
-  const startVisible = await isActionVisible(page, 'Start My Day');
-  const endVisible = await isActionVisible(page, 'End My Day');
-
-  if (startVisible) return 'Start My Day';
-  if (endVisible) return 'End My Day';
-  return null;
-}
-
-async function clickUntilStateChange(page) {
-  const labelToClick = await pickActionToClick(page);
-  if (!labelToClick) {
-    await page.screenshot({ path: 'debug-screenshot.png', fullPage: true });
-    throw new Error('"Start My Day" and "End My Day" not found. See debug-screenshot.png.');
+async function clickStartUntilEndMyDay(page) {
+  if (await isClockedIn(page)) {
+    const startStillVisible = await isVisible(page, START_SELECTORS);
+    if (!startStillVisible) {
+      console.log('Already clocked in — "End My Day" is showing. Nothing to click.');
+      return;
+    }
   }
 
-  const expectedAfter = oppositeLabel(labelToClick);
-  console.log(
-    `Action visible: "${labelToClick}". Will click until "${expectedAfter}" is the active state.`
-  );
+  console.log('Will keep clicking "Start My Day" until "End My Day" appears...');
 
   for (let attempt = 1; attempt <= MAX_CLICK_ATTEMPTS; attempt++) {
-    const stillThere = await isActionVisible(page, labelToClick);
-    if (!stillThere) {
-      const oppositeVisible = await isActionVisible(page, expectedAfter);
-      if (oppositeVisible) {
-        console.log(`✅ State changed to "${expectedAfter}" (attempt ${attempt}).`);
-        return { clickedLabel: labelToClick, success: true };
-      }
+    if (await isClockedIn(page)) {
+      console.log(`✅ "End My Day" is now showing (after ${attempt} attempt(s)).`);
+      return;
     }
 
-    const clicked = await clickAction(page, labelToClick);
+    const clicked = await clickStartMyDay(page);
     if (!clicked) {
-      console.log(`Attempt ${attempt}: "${labelToClick}" not clickable, re-checking state...`);
+      console.log(`Attempt ${attempt}: Start My Day circle not found or not clickable.`);
     }
 
     await sleep(WAIT_AFTER_CLICK_MS);
     await tryDismissConfirm(page);
     await sleep(1000);
 
-    const startVisible = await isActionVisible(page, 'Start My Day');
-    const endVisible = await isActionVisible(page, 'End My Day');
-
-    if (stateChanged(labelToClick, startVisible, endVisible)) {
-      console.log(
-        `✅ State changed after clicking "${labelToClick}" → now showing "${expectedAfter}" (attempt ${attempt}).`
-      );
-      return { clickedLabel: labelToClick, success: true };
+    if (await isClockedIn(page)) {
+      console.log(`✅ "End My Day" is now showing (after ${attempt} click(s)).`);
+      return;
     }
 
-    console.log(
-      `Attempt ${attempt}/${MAX_CLICK_ATTEMPTS}: state unchanged (Start visible: ${startVisible}, End visible: ${endVisible}). Retrying...`
-    );
+    console.log(`Attempt ${attempt}/${MAX_CLICK_ATTEMPTS}: still not "End My Day". Clicking again...`);
   }
 
   await page.screenshot({ path: 'debug-screenshot.png', fullPage: true });
   throw new Error(
-    `Clicked "${labelToClick}" ${MAX_CLICK_ATTEMPTS} times but state did not change to "${expectedAfter}". See debug-screenshot.png.`
+    `Clicked "Start My Day" ${MAX_CLICK_ATTEMPTS} times but "End My Day" never appeared. See debug-screenshot.png.`
   );
 }
 
@@ -223,7 +184,7 @@ async function startMyDay() {
     console.log('On Time Capture page.');
 
     await sleep(3000);
-    await clickUntilStateChange(page);
+    await clickStartUntilEndMyDay(page);
   } finally {
     await browser.close();
   }
