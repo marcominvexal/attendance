@@ -52,46 +52,11 @@ async function startMyDay() {
     // 4. Take screenshot for reference
     await page.screenshot({ path: 'debug-screenshot.png', fullPage: true });
 
-    // 5. Click the "Start / My Day" circle button using JS
-    // The button text is split: "Start" on line 1, "My Day" on line 2
-    console.log('Clicking Start My Day button...');
-    const clicked = await page.evaluate(() => {
-      // Find any element whose combined innerText contains both "Start" and "My Day"
-      const all = Array.from(document.querySelectorAll('*'));
-      for (const el of all) {
-        const text = el.innerText || '';
-        const normalized = text.replace(/\s+/g, ' ').trim();
-        if (normalized === 'Start My Day' || normalized.includes('Start\nMy Day') || normalized.includes('Start My Day')) {
-          // Prefer clicking the element itself if it's small (likely the button)
-          if (el.children.length <= 3) {
-            el.click();
-            return { clicked: true, tag: el.tagName, text: normalized };
-          }
-        }
-      }
-      // Fallback: find element containing "Start" text node directly
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      let node;
-      while ((node = walker.nextNode())) {
-        if (node.textContent.trim() === 'Start') {
-          const parent = node.parentElement;
-          const grandparent = parent && parent.parentElement;
-          // Check sibling/grandparent contains "My Day"
-          const container = grandparent || parent;
-          if (container && container.innerText && container.innerText.includes('My Day')) {
-            container.click();
-            return { clicked: true, tag: container.tagName, text: container.innerText.trim() };
-          }
-        }
-      }
-      return { clicked: false };
-    });
-
-    console.log('JS click result:', JSON.stringify(clicked));
-
-    if (!clicked.clicked) {
-      throw new Error('Could not find Start My Day button. Check debug-screenshot.png.');
-    }
+    // 5. Click the Start My Day button — id="btn_save"
+    console.log('Clicking #btn_save (Start My Day)...');
+    await page.waitForSelector('#btn_save', { state: 'visible', timeout: 10000 });
+    await page.click('#btn_save');
+    console.log('✅ Clicked #btn_save.');
 
     // 6. Confirm
     await sleep(3000);
