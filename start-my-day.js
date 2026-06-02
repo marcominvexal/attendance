@@ -20,6 +20,7 @@ const END_SELECTORS = [
 
 const MAX_CLICK_ATTEMPTS = 10;
 const WAIT_AFTER_CLICK_MS = 2500;
+const SUCCESS_SCREENSHOT = 'end-my-day-screenshot.png';
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -84,11 +85,18 @@ async function isClockedIn(page) {
   return isVisible(page, END_SELECTORS);
 }
 
+async function captureEndMyDayScreenshot(page) {
+  await sleep(500);
+  await page.screenshot({ path: SUCCESS_SCREENSHOT, fullPage: true });
+  console.log(`Screenshot saved: ${SUCCESS_SCREENSHOT}`);
+}
+
 async function clickStartUntilEndMyDay(page) {
   if (await isClockedIn(page)) {
     const startStillVisible = await isVisible(page, START_SELECTORS);
     if (!startStillVisible) {
       console.log('Already clocked in — "End My Day" is showing. Nothing to click.');
+      await captureEndMyDayScreenshot(page);
       return;
     }
   }
@@ -98,6 +106,7 @@ async function clickStartUntilEndMyDay(page) {
   for (let attempt = 1; attempt <= MAX_CLICK_ATTEMPTS; attempt++) {
     if (await isClockedIn(page)) {
       console.log(`✅ "End My Day" is now showing (after ${attempt} attempt(s)).`);
+      await captureEndMyDayScreenshot(page);
       return;
     }
 
@@ -112,6 +121,7 @@ async function clickStartUntilEndMyDay(page) {
 
     if (await isClockedIn(page)) {
       console.log(`✅ "End My Day" is now showing (after ${attempt} click(s)).`);
+      await captureEndMyDayScreenshot(page);
       return;
     }
 

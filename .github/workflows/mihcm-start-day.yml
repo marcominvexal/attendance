@@ -37,10 +37,20 @@ jobs:
           MIHCM_PROXY_PASSWORD: ${{ secrets.MIHCM_PROXY_PASSWORD }}
         run: node start-my-day.js
 
+      - name: Upload End My Day screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: end-my-day-screenshot
+          path: end-my-day-screenshot.png
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload debug screenshot (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: debug-screenshot
           path: debug-screenshot.png
+          if-no-files-found: ignore
           retention-days: 3
