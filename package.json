@@ -1,0 +1,12 @@
+{
+  "name": "mihcm-start-my-day",
+  "version": "1.0.0",
+  "description": "Automated MiHCM Start My Day via Playwright",
+  "main": "start-my-day.js",
+  "scripts": {
+    "start": "node start-my-day.js"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0"
+  }
+}
