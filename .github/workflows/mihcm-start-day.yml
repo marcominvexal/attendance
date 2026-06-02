@@ -2,8 +2,8 @@ name: MiHCM Start My Day
 
 on:
   schedule:
-    # Runs at 03:30 UTC (08:30 PKT) Mon-Fri
-    - cron: '30 3 * * 1-5'
+    # 03:30 UTC = 08:30 PKT (GMT+5). Random 0–15 min delay → 08:30–08:45 PKT daily.
+    - cron: '30 3 * * *'
   workflow_dispatch: # Allow manual trigger
 
 jobs:
@@ -25,6 +25,12 @@ jobs:
 
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
+
+      - name: Random delay (0–15 minutes, 08:30–08:45 PKT)
+        run: |
+          DELAY=$(( RANDOM % 901 ))
+          echo "Sleeping for $DELAY seconds (~$(( DELAY / 60 )) min $(( DELAY % 60 )) sec)..."
+          sleep $DELAY
 
       - name: Run Start My Day automation
         env:

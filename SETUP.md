@@ -1,6 +1,6 @@
 # MiHCM Start My Day — Setup Guide
 
-Automated daily login and "Start My Day" click via GitHub Actions. Runs Mon–Fri at 08:30 PKT (03:30 UTC). Works even when your PC is off.
+Automated daily login and "Start My Day" click via GitHub Actions. Runs **every day** at a random time between **08:30–08:45 PKT** (GMT+5 / 03:30–03:45 UTC). Works even when your PC is off.
 
 ---
 
@@ -68,7 +68,7 @@ git push origin main
 
 1. Go to your repo → **Actions** tab
 2. If prompted, click **"I understand my workflows, go ahead and enable them"**
-3. The workflow will now run automatically Mon–Fri
+3. The workflow will now run automatically every day
 
 ---
 
@@ -93,3 +93,11 @@ The screenshot shows exactly what the browser saw, making it easy to fix selecto
 - MiHCM changed the button label → update the selector in `start-my-day.js`
 - Login redirects through SSO → may need additional steps in the script
 - GitHub Actions cron can occasionally be delayed by a few minutes under heavy load
+
+---
+
+## Schedule (Pakistan time)
+
+- **Timezone:** PKT (GMT+5)
+- **Window:** 08:30–08:45 every day
+- **How:** GitHub cron fires at **03:30 UTC**, then sleeps a random **0–900 seconds** before clicking Start My Day
