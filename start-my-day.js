@@ -1,9 +1,5 @@
 const { chromium } = require('playwright');
 
-async function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 async function startMyDay() {
   const username = process.env.MIHCM_USERNAME;
   const password = process.env.MIHCM_PASSWORD;
@@ -46,7 +42,6 @@ async function startMyDay() {
     // 3. Wait for Time Capture page
     await page.waitForURL('**/ontime/timecapture**', { timeout: 30000 });
     await page.waitForLoadState('networkidle', { timeout: 30000 });
-    await sleep(4000);
     console.log('On Time Capture page.');
 
     // 4. Take screenshot for reference
@@ -59,14 +54,16 @@ async function startMyDay() {
     console.log('✅ Clicked #btn_save.');
 
     // 6. Confirm
-    await sleep(3000);
-    await page.screenshot({ path: 'after-click-screenshot.png', fullPage: true });
-    const afterText = await page.innerText('body');
-    if (afterText.includes('End') && afterText.includes('My Day')) {
+    try {
+      await page.waitForFunction(
+        () => document.body.innerText.includes('End') && document.body.innerText.includes('My Day'),
+        { timeout: 10000 }
+      );
       console.log('✅ Day started successfully!');
-    } else {
-      console.warn('⚠️  Could not confirm. Check after-click-screenshot.png.');
+    } catch {
+      console.warn('⚠️  Could not confirm End My Day within 10s. Check after-click-screenshot.png.');
     }
+    await page.screenshot({ path: 'after-click-screenshot.png', fullPage: true });
 
   } finally {
     await browser.close();
