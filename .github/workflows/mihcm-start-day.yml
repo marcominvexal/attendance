@@ -1,9 +1,12 @@
 name: MiHCM Start My Day
 
 on:
-  # Auto schedule only (weekdays 03:30 UTC = 08:30 PKT + random 0–15 min)
   schedule:
     - cron: '30 3 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   start-my-day:
@@ -33,18 +36,64 @@ jobs:
           sleep $DELAY
 
       - name: Run Start My Day automation
+        id: automation
         env:
           MIHCM_USERNAME: ${{ secrets.MIHCM_USERNAME }}
           MIHCM_PASSWORD: ${{ secrets.MIHCM_PASSWORD }}
         run: node start-my-day.js
 
-      - name: Upload screenshots (always)
+      - name: Save screenshot and log entry to repo
+        if: always()
+        run: |
+          # Get current date/time in PKT (UTC+5)
+          DATE=$(TZ='Asia/Karachi' date '+%Y-%m-%d')
+          TIME=$(TZ='Asia/Karachi' date '+%H:%M')
+          STATUS="${{ steps.automation.outcome }}"
+
+          # Create screenshots folder
+          mkdir -p screenshots
+
+          # Copy screenshots with date prefix
+          if [ -f "debug-screenshot.png" ]; then
+            cp debug-screenshot.png "screenshots/${DATE}-before.png"
+          fi
+          if [ -f "after-click-screenshot.png" ]; then
+            cp after-click-screenshot.png "screenshots/${DATE}-after.png"
+          fi
+
+          # Append to attendance-log.json
+          node -e "
+            const fs = require('fs');
+            const log = JSON.parse(fs.readFileSync('attendance-log.json', 'utf8'));
+            const entry = {
+              date: '${DATE}',
+              timePKT: '${TIME}',
+              status: '${STATUS}',
+              screenshotBefore: fs.existsSync('screenshots/${DATE}-before.png') ? 'screenshots/${DATE}-before.png' : null,
+              screenshotAfter: fs.existsSync('screenshots/${DATE}-after.png') ? 'screenshots/${DATE}-after.png' : null,
+              notes: '${STATUS}' === 'success' ? 'Auto-marked via GitHub Actions' : 'Run failed — check screenshots'
+            };
+            // Remove existing entry for same date if any
+            const filtered = log.filter(l => l.date !== '${DATE}');
+            filtered.unshift(entry);
+            fs.writeFileSync('attendance-log.json', JSON.stringify(filtered, null, 2));
+            console.log('Log updated:', entry);
+          "
+
+          # Commit and push
+          git config user.name "MiHCM Bot"
+          git config user.email "actions@github.com"
+          git add attendance-log.json screenshots/
+          git diff --cached --quiet || git commit -m "Attendance log: ${DATE} — ${STATUS}"
+          git push
+
+      - name: Upload screenshots artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots
+          name: screenshots-${{ github.run_id }}
           path: |
             debug-screenshot.png
             after-click-screenshot.png
-          retention-days: 3
+          retention-days: 7
           if-no-files-found: ignore
