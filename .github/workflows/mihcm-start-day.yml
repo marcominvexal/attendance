@@ -2,9 +2,7 @@ name: MiHCM Start My Day
 
 on:
   schedule:
-    # 03:30 UTC = 08:30 PKT (GMT+5). Random 0–15 min delay → 08:30–08:45 PKT daily.
-    - cron: '30 3 * * *'
-  workflow_dispatch: # Allow manual trigger
+    - cron: '30 3 * * 1-5'
 
 jobs:
   start-my-day:
@@ -18,7 +16,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install dependencies
         run: npm install
@@ -27,7 +25,6 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Random delay (0–15 minutes, 08:30–08:45 PKT)
-        if: github.event_name == 'schedule'
         run: |
           DELAY=$(( RANDOM % 901 ))
           echo "Sleeping for $DELAY seconds (~$(( DELAY / 60 )) min $(( DELAY % 60 )) sec)..."
@@ -39,13 +36,22 @@ jobs:
           MIHCM_PASSWORD: ${{ secrets.MIHCM_PASSWORD }}
         run: node start-my-day.js
 
-      - name: Upload screenshots (always)
+      - name: Send email with screenshot
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: dawidd6/action-send-mail@v3
         with:
-          name: screenshots
-          path: |
-            debug-screenshot.png
-            after-click-screenshot.png
-          retention-days: 3
-          if-no-files-found: ignore
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "MiHCM Attendance — ${{ job.status == 'success' && '✅ Done' || '❌ Failed' }} — ${{ github.run_id }}"
+          to: waqi.anwer@invexal.com
+          from: ${{ secrets.GMAIL_USERNAME }}
+          body: |
+            MiHCM Start My Day ran on ${{ github.run_id }}.
+            Status: ${{ job.status }}
+            Time: $(date)
+
+            Screenshots attached.
+          attachments: after-click-screenshot.png,debug-screenshot.png
