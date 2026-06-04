@@ -3,7 +3,6 @@ name: MiHCM Start My Day
 on:
   schedule:
     - cron: '30 3 * * 1-5'
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -29,7 +28,6 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Random delay (0–15 minutes, 08:30–08:45 PKT)
-        if: github.event_name == 'schedule'
         run: |
           DELAY=$(( RANDOM % 901 ))
           echo "Sleeping for $DELAY seconds (~$(( DELAY / 60 )) min $(( DELAY % 60 )) sec)..."
