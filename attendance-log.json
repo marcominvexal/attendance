@@ -1,1 +1,10 @@
-[]
+[
+  {
+    "date": "2026-06-05",
+    "timePKT": "15:25",
+    "status": "success",
+    "screenshotBefore": "screenshots/2026-06-05-before.png",
+    "screenshotAfter": "screenshots/2026-06-05-after.png",
+    "notes": "Auto-marked via GitHub Actions"
+  }
+]
