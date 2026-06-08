@@ -1,13 +1,20 @@
 name: MiHCM Start My Day
 
 on:
+  # Primary: triggered by cron-job.org at 08:30 PKT (see CRON-SETUP.md)
+  repository_dispatch:
+    types: [morning-run]
+  # Backup: GitHub schedule (may be delayed — morning window guard blocks late runs)
   schedule:
-    # 03:30–03:45 UTC = 08:30–08:45 PKT (GMT+5), Mon–Fri
-    # Multiple slots improve odds if GitHub delays one cron trigger
-    - cron: '30 3 * * 1-5'
-    - cron: '35 3 * * 1-5'
-    - cron: '40 3 * * 1-5'
-    - cron: '45 3 * * 1-5'
+    - cron: '30 8 * * 1-5'
+      timezone: Asia/Karachi
+    - cron: '35 8 * * 1-5'
+      timezone: Asia/Karachi
+    - cron: '40 8 * * 1-5'
+      timezone: Asia/Karachi
+    - cron: '45 8 * * 1-5'
+      timezone: Asia/Karachi
+  # Manual test anytime
   workflow_dispatch:
 
 permissions:
@@ -24,12 +31,25 @@ jobs:
         with:
           persist-credentials: true
 
-      - name: Skip if already marked today (scheduled runs)
-        if: github.event_name == 'schedule'
+      - name: Pre-check (morning window + already marked)
         id: skipcheck
         run: |
+          SKIP=false
+          PKT_NOW=$(TZ='Asia/Karachi' date '+%H:%M')
           DATE=$(TZ='Asia/Karachi' date '+%Y-%m-%d')
-          if [ -f attendance-log.json ]; then
+          HOUR=$(TZ='Asia/Karachi' date '+%H')
+          MIN=$(TZ='Asia/Karachi' date '+%M')
+          NOW=$((10#$HOUR * 60 + 10#$MIN))
+
+          # GitHub schedule can fire hours late — never mark outside morning window
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            if [ "$NOW" -lt 505 ] || [ "$NOW" -gt 550 ]; then
+              echo "Outside 08:25–08:50 PKT. Now: ${PKT_NOW}. Skipping (prevents evening marks)."
+              SKIP=true
+            fi
+          fi
+
+          if [ "$SKIP" = "false" ] && [ -f attendance-log.json ]; then
             SHOULD_SKIP=$(node -e "
               const fs = require('fs');
               const log = JSON.parse(fs.readFileSync('attendance-log.json', 'utf8'));
@@ -38,8 +58,14 @@ jobs:
             ")
             if [ "$SHOULD_SKIP" = "yes" ]; then
               echo "Already marked attendance for ${DATE}. Skipping."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
+              SKIP=true
             fi
+          fi
+
+          if [ "$SKIP" = "true" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Running at ${PKT_NOW} PKT on ${DATE}."
           fi
 
       - name: Set up Node.js
@@ -56,12 +82,13 @@ jobs:
         if: steps.skipcheck.outputs.skip != 'true'
         run: npx playwright install chromium --with-deps
 
-      - name: Random delay (0–4 minutes, 08:30–08:45 PKT window)
-        if: github.event_name == 'schedule' && steps.skipcheck.outputs.skip != 'true'
+      - name: Random delay (0–15 min → 08:30–08:45 PKT)
+        if: steps.skipcheck.outputs.skip != 'true' && (github.event_name == 'repository_dispatch' || github.event_name == 'schedule')
         run: |
-          DELAY=$(( RANDOM % 241 ))
-          echo "Sleeping for $DELAY seconds (~$(( DELAY / 60 )) min)..."
+          DELAY=$(( RANDOM % 901 ))
+          echo "Sleeping ${DELAY}s (~$(( DELAY / 60 )) min) for random morning time..."
           sleep $DELAY
+          echo "Now: $(TZ='Asia/Karachi' date '+%H:%M') PKT"
 
       - name: Run Start My Day automation
         if: steps.skipcheck.outputs.skip != 'true'
