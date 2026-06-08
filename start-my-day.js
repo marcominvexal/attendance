@@ -47,6 +47,13 @@ async function startMyDay() {
     // 4. Take screenshot for reference
     await page.screenshot({ path: 'debug-screenshot.png', fullPage: true });
 
+    const bodyText = await page.innerText('body');
+    if (bodyText.includes('End') && bodyText.includes('My Day')) {
+      console.log('Already clocked in today (End My Day visible). Skipping click.');
+      await page.screenshot({ path: 'after-click-screenshot.png', fullPage: true });
+      return;
+    }
+
     // 5. Click the Start My Day button — id="btn_save"
     console.log('Clicking #btn_save (Start My Day)...');
     await page.waitForSelector('#btn_save', { state: 'visible', timeout: 10000 });

@@ -2,9 +2,13 @@ name: MiHCM Start My Day
 
 on:
   schedule:
-    # 03:30 UTC = 08:30 PKT, Mon–Fri (+ random 0–15 min delay in job)
+    # 03:30–03:45 UTC = 08:30–08:45 PKT (GMT+5), Mon–Fri
+    # Multiple slots improve odds if GitHub delays one cron trigger
     - cron: '30 3 * * 1-5'
-  workflow_dispatch: # manual test only — schedule still runs automatically
+    - cron: '35 3 * * 1-5'
+    - cron: '40 3 * * 1-5'
+    - cron: '45 3 * * 1-5'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -20,25 +24,47 @@ jobs:
         with:
           persist-credentials: true
 
+      - name: Skip if already marked today (scheduled runs)
+        if: github.event_name == 'schedule'
+        id: skipcheck
+        run: |
+          DATE=$(TZ='Asia/Karachi' date '+%Y-%m-%d')
+          if [ -f attendance-log.json ]; then
+            SHOULD_SKIP=$(node -e "
+              const fs = require('fs');
+              const log = JSON.parse(fs.readFileSync('attendance-log.json', 'utf8'));
+              const done = log.some(e => e.date === '${DATE}' && e.status === 'success');
+              process.stdout.write(done ? 'yes' : 'no');
+            ")
+            if [ "$SHOULD_SKIP" = "yes" ]; then
+              echo "Already marked attendance for ${DATE}. Skipping."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
       - name: Set up Node.js
+        if: steps.skipcheck.outputs.skip != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '24'
 
       - name: Install dependencies
+        if: steps.skipcheck.outputs.skip != 'true'
         run: npm install
 
       - name: Install Playwright browsers
+        if: steps.skipcheck.outputs.skip != 'true'
         run: npx playwright install chromium --with-deps
 
-      - name: Random delay (0–15 minutes, 08:30–08:45 PKT)
-        if: github.event_name == 'schedule'
+      - name: Random delay (0–4 minutes, 08:30–08:45 PKT window)
+        if: github.event_name == 'schedule' && steps.skipcheck.outputs.skip != 'true'
         run: |
-          DELAY=$(( RANDOM % 901 ))
-          echo "Sleeping for $DELAY seconds (~$(( DELAY / 60 )) min $(( DELAY % 60 )) sec)..."
+          DELAY=$(( RANDOM % 241 ))
+          echo "Sleeping for $DELAY seconds (~$(( DELAY / 60 )) min)..."
           sleep $DELAY
 
       - name: Run Start My Day automation
+        if: steps.skipcheck.outputs.skip != 'true'
         id: automation
         env:
           MIHCM_USERNAME: ${{ secrets.MIHCM_USERNAME }}
@@ -46,17 +72,14 @@ jobs:
         run: node start-my-day.js
 
       - name: Save screenshot and log entry to repo
-        if: always()
+        if: always() && steps.skipcheck.outputs.skip != 'true'
         run: |
-          # Get current date/time in PKT (UTC+5)
           DATE=$(TZ='Asia/Karachi' date '+%Y-%m-%d')
           TIME=$(TZ='Asia/Karachi' date '+%H:%M')
           STATUS="${{ steps.automation.outcome }}"
 
-          # Create screenshots folder
           mkdir -p screenshots
 
-          # Copy screenshots with date prefix
           if [ -f "debug-screenshot.png" ]; then
             cp debug-screenshot.png "screenshots/${DATE}-before.png"
           fi
@@ -64,7 +87,6 @@ jobs:
             cp after-click-screenshot.png "screenshots/${DATE}-after.png"
           fi
 
-          # Append to attendance-log.json
           node -e "
             const fs = require('fs');
             const log = JSON.parse(fs.readFileSync('attendance-log.json', 'utf8'));
@@ -76,14 +98,12 @@ jobs:
               screenshotAfter: fs.existsSync('screenshots/${DATE}-after.png') ? 'screenshots/${DATE}-after.png' : null,
               notes: '${STATUS}' === 'success' ? 'Auto-marked via GitHub Actions' : 'Run failed — check screenshots'
             };
-            // Remove existing entry for same date if any
             const filtered = log.filter(l => l.date !== '${DATE}');
             filtered.unshift(entry);
             fs.writeFileSync('attendance-log.json', JSON.stringify(filtered, null, 2));
             console.log('Log updated:', entry);
           "
 
-          # Commit and push
           git config user.name "MiHCM Bot"
           git config user.email "actions@github.com"
           git add attendance-log.json screenshots/
@@ -91,7 +111,7 @@ jobs:
           git push origin HEAD:main
 
       - name: Upload screenshots artifact
-        if: always()
+        if: always() && steps.skipcheck.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: screenshots-${{ github.run_id }}
